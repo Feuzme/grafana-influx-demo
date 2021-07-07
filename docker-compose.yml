@@ -1,0 +1,65 @@
+version: "3.3" # version du fichier de configuration.
+
+# si un fichier ".env" est présent dans le même répertoire que ce fichier
+# il sera lu est intégré à cette configuration
+
+###   exemple de .env   ###
+# INFLUXDB_USERNAME=admin
+# INFLUXDB_PASSWORD=admin
+# GRAFANA_USERNAME=admin
+# GRAFANA_PASSWORD=admin
+### fin exemple de .env ###
+
+# les valeurs dans le fichier docker-compose
+# exemepl : INFLUXDB_USERNAME=${INFLUXDB_USERNAME}
+# ${INFLUXDB_USERNAME} sera remplacé par la valeur "admin" du fichier .env
+
+services: # un service va permettre de configurer un conteneur
+  influxdb: # nom du service. On peut choisir n'importe quel nom (éviter accent, espace)
+    hostname: influxdb # nom de l'hote, var servir de DNS pour communniquer entre les conteneurs
+    image: influxdb:1.8.4 # image à télécharger
+    container_name: tick_influx # nom de l'instance du conteneur
+    volumes: # permet le partage de répertoire entre l'OS hôte et le conteneur
+      - influxdb-storage:/var/lib/influxdb 
+      - ./data/influx/config:/etc/influxdb # ./repertoire_windows:repertoire_conteneur
+      - ./data/influx/samples:/data
+    environment: # permet de configurer les variables d'environnement
+      - INFLUXDB_DB=docker # pour connaitre cette variable, je dois regarder la documentation du conteneur influxdb
+      - INFLUXDB_ADMIN_USER=${INFLUXDB_USERNAME}
+      - INFLUXDB_ADMIN_PASSWORD=${INFLUXDB_PASSWORD}
+  
+  grafana:
+    image: grafana/grafana:7.3.1
+    container_name: grafana
+    volumes:
+      - grafana-storage:/var/lib/grafana # volume spécial, c'est un lien vers un répertoire géré par docker (voir plus bas dans ce fichier)
+      - ./data/grafana/plugins:/var/lib/grafana/plugins
+      - ./data/grafana/config/grafana.ini:/etc/grafana/grafana.ini
+      - ./data/grafana/dashboards:/var/lib/grafana/dashboards
+      - ./data/grafana/datasources:/etc/grafana/datasources
+      # - ./data/grafana/styles/dark:/usr/share/grafana/public/build/grafana.dark.d9f582b9b538bf193c78.css
+    depends_on:
+      - influxdb
+      - telegraf
+    environment:
+      - GF_SECURITY_ADMIN_USER=${GRAFANA_USERNAME}
+      - GF_SECURITY_ADMIN_PASSWORD=${GRAFANA_PASSWORD}
+      - GF_PATHS_PLUGINS=/var/lib/grafana/plugins
+    ports:
+      - "${PORT_GRAFANA}:3000"
+
+  telegraf:
+    image: telegraf:latest
+    container_name: tick_telegraf
+    depends_on: # on s'assure que le service se nommant influxdb est bien démarré
+      - influxdb
+    volumes:
+      # récupération des métriques de docker.
+      - "//var/run/docker.sock:/var/run/docker.sock:ro" # repertoire sur l'hote Linux (celui qui contient le conteneur)
+      - ./data/telegraf/conf/telegraf.conf:/etc/telegraf/telegraf.conf:ro # ro indique en lecture seule. Le conteneur n'a le droit que de lire le contenu de ce répertoire
+
+
+volumes: # répertoire fabriqués par docker sur l'hôte linux
+  influxdb-storage:
+  chronograf-storage:
+  grafana-storage:
